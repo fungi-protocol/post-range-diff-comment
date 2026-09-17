@@ -70,7 +70,8 @@ environment variables `action.yml` sets.
 
 This is the minimal version: bash for the git and GitHub plumbing, a
 dependency-free Python script for parsing and rendering, both preinstalled on
-hosted runners. Syntax-highlighted, delta-style interdiffs are the intended
+hosted runners. Should the Python ever need dependencies, they go through
+[uv2nix](https://github.com/pyproject-nix/uv2nix). Syntax-highlighted, delta-style interdiffs are the intended
 next step, and would likely motivate a Rust rewrite.
 
 ## License
