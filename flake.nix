@@ -20,6 +20,7 @@
       imports = [
         ./nix/checks
         ./nix/devshell.nix
+        ./nix/package.nix
         ./nix/treefmt.nix
       ];
     };

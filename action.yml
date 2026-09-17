@@ -1,0 +1,54 @@
+name: post-range-diff-comment
+description: >-
+  On a force push to a pull request, post `git range-diff` of the old and new series as a collapsed comment, one collapsible section per rewritten commit.
+author: Fungi contributors
+branding:
+  icon: git-commit
+  color: purple
+inputs:
+  token:
+    description: "Token with `pull-requests: write`."
+    default: ${{ github.token }}
+  before:
+    description: Head commit before the push.
+    default: ${{ github.event.before }}
+  after:
+    description: Head commit after the push.
+    default: ${{ github.event.after }}
+  base-ref:
+    description: The pull request's base branch.
+    default: ${{ github.event.pull_request.base.ref }}
+  pr-number:
+    description: The pull request to comment on.
+    default: ${{ github.event.pull_request.number }}
+  creation-factor:
+    description: "Passed to `git range-diff --creation-factor`; empty keeps git's default."
+    default: ""
+  max-comment-bytes:
+    description: "Interdiffs are truncated to keep the comment under this size; GitHub's limit is 65536."
+    default: "65000"
+  post-comment:
+    description: Set to `false` to render the comment to the log and job summary without posting it.
+    default: "true"
+outputs:
+  forced:
+    description: "`true` if the push was not a fast-forward, `false` if nothing was posted."
+    value: ${{ steps.run.outputs.forced }}
+  comment-url:
+    description: URL of the posted comment, when one was posted.
+    value: ${{ steps.run.outputs.comment-url }}
+runs:
+  using: composite
+  steps:
+    - id: run
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        BEFORE: ${{ inputs.before }}
+        AFTER: ${{ inputs.after }}
+        BASE_REF: ${{ inputs.base-ref }}
+        PR_NUMBER: ${{ inputs.pr-number }}
+        CREATION_FACTOR: ${{ inputs.creation-factor }}
+        MAX_COMMENT_BYTES: ${{ inputs.max-comment-bytes }}
+        POST_COMMENT: ${{ inputs.post-comment }}
+      run: bash "$GITHUB_ACTION_PATH/post-range-diff-comment.sh"
