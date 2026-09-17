@@ -1,3 +1,6 @@
 {
-  imports = [ ./tests.nix ];
+  imports = [
+    ./actionlint.nix
+    ./tests.nix
+  ];
 }
