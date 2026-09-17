@@ -3,3 +3,5 @@ beta (v2, reworded)
 gamma
 epsilon
 zeta
+epsilon
+zeta
