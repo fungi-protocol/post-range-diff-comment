@@ -22,7 +22,9 @@ jobs:
 
 Fast-forward pushes are skipped. Each side is diffed against its own merge
 base with the base branch, so a rebase onto a newer base is not mistaken for
-changes. Inputs and outputs are described in [action.yml](action.yml).
+changes. A base branch that was itself rewritten, as a parent in a stack, is
+recognized from its force pushes in the repository's activity log. Inputs and
+outputs are described in [action.yml](action.yml).
 
 `pull_request_target` gives fork PRs a token that can comment. It is safe here
 because nothing from the PR runs: the checkout is the base branch, the action
