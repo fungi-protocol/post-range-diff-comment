@@ -69,10 +69,12 @@ if old_base="$(git merge-base "$BEFORE" "${base_tips[@]}")" &&
   [[ $new_base != "$(git rev-parse "$AFTER^{commit}")" ]]; then
   old_range="$old_base..$BEFORE"
   new_range="$new_base..$AFTER"
+  read -r base_behind base_ahead < <(git rev-list --left-right --count "$old_base...$new_base")
 else
   echo "::warning::no fork point from $BASE_REF; using $BEFORE...$AFTER"
   old_range="$AFTER..$BEFORE"
   new_range="$BEFORE..$AFTER"
+  old_base="" new_base="" base_behind=0 base_ahead=0
 fi
 
 args=(--no-color)
@@ -90,6 +92,8 @@ render() {
   python3 "$HERE/render.py" \
     --repo-url "$SERVER/$REPO" --before "$BEFORE" --after "$AFTER" \
     --old-range "$pretty_old" --new-range "$pretty_new" \
+    --old-base "$old_base" --new-base "$new_base" \
+    --base-behind "$base_behind" --base-ahead "$base_ahead" \
     --pushed-at "$PUSHED_AT" --max-bytes "$1" <"$WORK/range-diff.txt"
 }
 render "${MAX_COMMENT_BYTES:-65000}" >"$WORK/comment.md"
