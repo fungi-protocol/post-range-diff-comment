@@ -107,7 +107,15 @@ class ActionTest(unittest.TestCase):
         return result.stdout
 
     def test_force_push_full_checkout(self):
-        self.run_action()
+        self.assertIn("; 1 commit; same base <a", self.run_action())
+
+    def test_rebase_onto_newer_base(self):
+        self.git("checkout", "-q", "main")
+        self.commit("other\n", "advance base", path="other")
+        self.git("checkout", "-q", "topic")
+        self.git("rebase", "-q", "main")
+        self.after = self.git("rev-parse", "HEAD")
+        self.assertIn("(descendant, 1 commit ahead)", self.run_action())
 
     def test_rewritten_parent_in_a_stack(self):
         self.git("checkout", "-q", "-b", "child")
@@ -121,8 +129,17 @@ class ActionTest(unittest.TestCase):
         collected = "0123456789" * 4
         out = self.run_action(base_ref="topic", rewound=[collected, old_parent])
         self.assertIn(f"git range-diff {old_parent[:7]}", out)
-        self.assertIn(f"{new_parent[:7]}..{self.after[:7]}</code>", out)
-        self.assertIn(": 1 unchanged</summary>", out)
+        self.assertIn("1 unchanged; 1 commit; base <a", out)
+        self.assertIn(f'{new_parent}">', out)
+        self.assertIn("(diverged, 1 ahead and 1 behind)", out)
+
+    def test_unrelated_base_is_not_described(self):
+        self.git("checkout", "-q", "main")
+        self.commit("rewritten\n", "base", amend=True, path="other")
+        self.git("checkout", "-q", "topic")
+        self.git("rebase", "-q", "--onto", "main", "topic~1")
+        self.after = self.git("rev-parse", "HEAD")
+        self.assertNotIn("base <a", self.run_action())
 
     def test_force_push_shallow_checkout(self):
         self.run_action(shallow=True)
