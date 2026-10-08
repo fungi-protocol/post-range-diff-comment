@@ -5,10 +5,10 @@
 <sup>reproduce: <code>git range-diff 9b127fb^..deecb4b 9b127fb^..031a726</code></sup>
 
 <pre>
-1:  <a href="https://github.com/fungi-protocol/post-range-diff-comment/commit/9b127fbefa8c868ee2aec33496f658793715ea4b">9b127fbefa</a> = 1:  <a href="https://github.com/fungi-protocol/post-range-diff-comment/commit/9b127fbefa8c868ee2aec33496f658793715ea4b">9b127fbefa</a> add b
-2:  <a href="https://github.com/fungi-protocol/post-range-diff-comment/commit/521d6e7130970908efb2c4370c589d194041d6ad">521d6e7130</a> ! 2:  <a href="https://github.com/fungi-protocol/post-range-diff-comment/commit/9914d9036bfa9513e1e505143e051833500db892">9914d9036b</a> tweak a, add c
-3:  <a href="https://github.com/fungi-protocol/post-range-diff-comment/commit/deecb4b7a41ec39b40cdfc935ab28eb769c3aead">deecb4b7a4</a> < -:  ---------- add d
--:  ---------- > 3:  <a href="https://github.com/fungi-protocol/post-range-diff-comment/commit/031a72677e2ee12123ab2c8ef794bc3d0c521d8b">031a72677e</a> add e
+1:  <a href="https://github.com/fungi-protocol/post-range-diff-comment/commit/9b127fbefa8c868ee2aec33496f658793715ea4b">9b127fbefa</a> +1 -0 1f = 1:  <a href="https://github.com/fungi-protocol/post-range-diff-comment/commit/9b127fbefa8c868ee2aec33496f658793715ea4b">9b127fbefa</a> +1 -0 1f add b
+2:  <a href="https://github.com/fungi-protocol/post-range-diff-comment/commit/521d6e7130970908efb2c4370c589d194041d6ad">521d6e7130</a> +3 -1 2f ! 2:  <a href="https://github.com/fungi-protocol/post-range-diff-comment/commit/9914d9036bfa9513e1e505143e051833500db892">9914d9036b</a> +3 -1 2f tweak a, add c
+3:  <a href="https://github.com/fungi-protocol/post-range-diff-comment/commit/deecb4b7a41ec39b40cdfc935ab28eb769c3aead">deecb4b7a4</a> +1 -0 1f < -:  ----------          add d
+-:  ----------          > 3:  <a href="https://github.com/fungi-protocol/post-range-diff-comment/commit/031a72677e2ee12123ab2c8ef794bc3d0c521d8b">031a72677e</a> +1 -0 1f add e
 </pre>
 
 <details>
