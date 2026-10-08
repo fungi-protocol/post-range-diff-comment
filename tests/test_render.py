@@ -9,6 +9,8 @@ FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 REPO = "https://github.com/fungi-protocol/post-range-diff-comment"
 BEFORE = "deecb4b7a41ec39b40cdfc935ab28eb769c3aead"
 AFTER = "031a72677e2ee12123ab2c8ef794bc3d0c521d8b"
+OLD_BASE = "1111111111111111111111111111111111111111"
+NEW_BASE = "2222222222222222222222222222222222222222"
 
 
 def render_basic(max_bytes=65000):
@@ -22,6 +24,10 @@ def render_basic(max_bytes=65000):
         new_range="9b127fb^..031a726",
         max_bytes=max_bytes,
         pushed_at="2026-09-17T00:10:17Z",
+        old_base=OLD_BASE,
+        new_base=NEW_BASE,
+        base_behind=0,
+        base_ahead=12,
     )
 
 
@@ -66,6 +72,20 @@ class RenderTest(unittest.TestCase):
     def test_golden(self):
         expected = (FIXTURES / "basic.md").read_text()
         self.assertEqual(render_basic(), expected)
+
+    def test_series_length(self):
+        grown = render.parse("1:  aaaa = 1:  aaaa a\n-:  ---- > 2:  bbbb b\n")
+        self.assertEqual(render.describe_series(grown), "1 → 2 commits")
+        self.assertEqual(render.describe_series(grown[:1]), "1 commit")
+
+    def test_base_relation(self):
+        def base(new, behind, ahead):
+            return render.describe_base(OLD_BASE, new, behind, ahead, REPO)
+
+        self.assertTrue(base(OLD_BASE, 0, 0).startswith("same base <a"))
+        self.assertIn("(descendant, 1 commit ahead)", base(NEW_BASE, 0, 1))
+        self.assertIn("(ancestor, 2 commits behind)", base(NEW_BASE, 2, 0))
+        self.assertIn("(diverged, 3 ahead and 2 behind)", base(NEW_BASE, 2, 3))
 
     def test_subject_is_escaped(self):
         pairs = render.parse("1:  aaaa = 1:  aaaa <script>&\n")
