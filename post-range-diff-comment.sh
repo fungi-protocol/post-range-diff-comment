@@ -6,7 +6,7 @@
 #   BEFORE, AFTER      head commit before and after the push
 #   BASE_REF           the pull request's base branch
 #   PR_NUMBER          the pull request number
-#   GH_TOKEN           token with pull-requests: write
+#   GH_TOKEN           token with contents: read and pull-requests: write
 #   CREATION_FACTOR    optional, passed to --creation-factor
 #   MAX_COMMENT_BYTES  cap on the comment body
 #   POST_COMMENT       "false" to render without posting
@@ -42,11 +42,27 @@ if git merge-base --is-ancestor "$BEFORE" "$AFTER"; then
 fi
 echo "forced=true" >>"$OUT"
 
+# When the base branch was itself rewritten, as a parent in a stack, its old
+# tips are unreachable from it, and a series left on one would seem to fork
+# from further back.  GitHub's activity log stands in for the reflog that
+# `git merge-base --fork-point` reads.
+base_tips=("origin/$BASE_REF")
+if rewound="$(gh api --paginate --jq '.[].before' \
+  "repos/$REPO/activity?ref=refs/heads/$BASE_REF&activity_type=force_push&per_page=100")"; then
+  for tip in $rewound; do
+    if git fetch --quiet --no-tags origin "$tip" 2>/dev/null; then
+      base_tips+=("$tip")
+    fi
+  done
+else
+  echo "::warning::could not list force pushes of $BASE_REF; if it was rewritten, its old commits will be counted in the series"
+fi
+
 # Diff each side against where it forked from the base branch, so a rebase
 # onto a newer base does not drag the base's new commits into the comparison.
 # Fall back to the symmetric difference if either side is unrelated to base.
-if old_base="$(git merge-base "origin/$BASE_REF" "$BEFORE")" &&
-  new_base="$(git merge-base "origin/$BASE_REF" "$AFTER")"; then
+if old_base="$(git merge-base "$BEFORE" "${base_tips[@]}")" &&
+  new_base="$(git merge-base "$AFTER" "${base_tips[@]}")"; then
   old_range="$old_base..$BEFORE"
   new_range="$new_base..$AFTER"
 else
