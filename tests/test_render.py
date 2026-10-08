@@ -28,6 +28,7 @@ def render_basic(max_bytes=65000):
         new_base=NEW_BASE,
         base_behind=0,
         base_ahead=12,
+        stats=render.parse_stats((FIXTURES / "basic.numstat").read_text()),
     )
 
 
@@ -58,10 +59,26 @@ class ParseTest(unittest.TestCase):
 class RenderTest(unittest.TestCase):
     def test_listing_is_one_aligned_pre_block(self):
         pairs = render.parse("1:  aaaa = 1:  aaaa first\n10:  bbbb < -:  ---- tenth\n")
-        out = render.render_listing(pairs, REPO)
+        out = render.render_listing(pairs, REPO, {})
         self.assertEqual(out.count("<pre>"), 1)
         self.assertIn("\n 1:  <a", out)
         self.assertIn("\n10:  <a", out)
+
+    def test_stats_are_summed_per_commit(self):
+        stats = render.parse_stats(
+            "aaaa\n\n3\t1\ta\n-\t-\ta => b\nbbbb\ncccc\n\n0\t12\tc\n"
+        )
+        self.assertEqual(stats["aaaa"], render.Stat(added=3, removed=1, files=2))
+        self.assertEqual(stats["bbbb"], render.Stat())
+        self.assertEqual(stats["cccc"], render.Stat(removed=12, files=1))
+
+    def test_listing_aligns_stats(self):
+        pairs = render.parse("1:  aaaa ! 1:  bbbb one\n2:  cccc < -:  ---- two\n")
+        stats = {"aaaa": render.Stat(5, 0, 1), "bbbb": render.Stat(120, 7, 10)}
+        first, second = render.render_listing(pairs, REPO, stats).splitlines()[1:3]
+        self.assertIn("aaaa</a>   +5 -0  1f ! 1:", first)
+        self.assertIn("bbbb</a> +120 -7 10f one", first)
+        self.assertIn("cccc</a>             < -:  ----------             two", second)
 
     def test_relative_time(self):
         self.assertEqual(
@@ -89,7 +106,7 @@ class RenderTest(unittest.TestCase):
 
     def test_subject_is_escaped(self):
         pairs = render.parse("1:  aaaa = 1:  aaaa <script>&\n")
-        out = render.render_listing(pairs, REPO)
+        out = render.render_listing(pairs, REPO, {})
         self.assertIn("&lt;script&gt;&amp;", out)
         self.assertNotIn("<script>", out)
 

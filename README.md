@@ -1,9 +1,10 @@
 # post-range-diff-comment
 
 Posts `git range-diff` of a force push to a pull request as a collapsed
-comment: an aligned listing of the commit pairs, then one collapsible
-interdiff per rewritten commit. GitHub's "Compare" link diffs the two trees;
-this shows how the commits changed.
+comment: an aligned listing of the commit pairs, each commit followed by its
+lines added, lines removed and files changed (`+3 -1 2f`), then one
+collapsible interdiff per rewritten commit. GitHub's "Compare" link diffs the
+two trees; this shows how the commits changed.
 
 ```yaml
 on:
