@@ -1,11 +1,15 @@
+import json
 import os
 import pathlib
 import subprocess
 import tempfile
 import unittest
 
+from test_outdated import comment
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 PACKAGE = os.environ.get("POST_RANGE_DIFF_EXECUTABLE")
+COMMENT_URL = "https://github.com/test/repo/pull/1#issuecomment-1"
 
 
 class ActionTest(unittest.TestCase):
@@ -49,13 +53,26 @@ class ActionTest(unittest.TestCase):
         forced=True,
         base_ref="main",
         rewound=(),
+        comments=None,
     ):
-        # Stands in for the activity log: prints the old tips of the base branch.
+        # Stands in for GitHub: the old tips of the base branch, the comments
+        # of the pull request, and a record of the ones it was asked to hide.
         stub = self.root / "stub"
         stub.mkdir()
+        (stub / "comments").write_text(
+            "".join(json.dumps(c) + "\n" for c in comments or ())
+        )
         gh = stub / "gh"
-        gh.write_text("#!/bin/sh\n" + "".join(f"echo {tip}\n" for tip in rewound))
+        gh.write_text(f"""#!/bin/sh
+case "$*" in
+*minimizeComment*) echo "$*" >>"{stub}/hidden" ;;
+*graphql*) cat "{stub}/comments" ;;
+*/activity*) printf '%s\\n' {" ".join(rewound)} ;;
+*) echo {COMMENT_URL} ;;
+esac
+""")
         gh.chmod(0o755)
+        posting = comments is not None
         checkout = self.root / "checkout"
         self.git(
             "clone",
@@ -77,7 +94,9 @@ class ActionTest(unittest.TestCase):
             GITHUB_SERVER_URL="https://github.com",
             GITHUB_OUTPUT=str(output),
             GITHUB_STEP_SUMMARY=str(summary),
-            POST_COMMENT="false",
+            POST_COMMENT=str(posting).lower(),
+            GH_TOKEN="token",
+            HIDE_AFTER_DAYS="3",
             PATH=f"{stub}{os.pathsep}{os.environ['PATH']}",
         )
         command = (
@@ -96,14 +115,15 @@ class ActionTest(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(output.exists(), result.stderr)
-        self.assertEqual(output.read_text(), f"forced={str(forced).lower()}\n")
-        if forced:
+        posted = f"comment-url={COMMENT_URL}\n" if posting else ""
+        self.assertEqual(output.read_text(), f"forced={str(forced).lower()}\n{posted}")
+        if not forced:
+            self.assertFalse(summary.exists())
+        elif not posting:
             self.assertIn("<b>range-diff</b>", result.stdout)
             self.assertIn(self.before, result.stdout)
             self.assertIn(self.after, result.stdout)
             self.assertTrue(result.stdout.endswith(summary.read_text()))
-        else:
-            self.assertFalse(summary.exists())
         return result.stdout
 
     def test_force_push_full_checkout(self):
@@ -142,6 +162,14 @@ class ActionTest(unittest.TestCase):
         self.git("rebase", "-q", "--onto", "main", "topic~1")
         self.after = self.git("rev-parse", "HEAD")
         self.assertNotIn("base <a", self.run_action())
+
+    def test_old_range_diff_comments_are_hidden(self):
+        old = comment("OLD", "2000-01-01T00:00:00Z")
+        new = comment("NEW", "2999-01-01T00:00:00Z")
+        self.run_action(comments=[old, new])
+        hidden = (self.root / "stub" / "hidden").read_text()
+        self.assertIn("id=OLD", hidden)
+        self.assertNotIn("id=NEW", hidden)
 
     def test_force_push_shallow_checkout(self):
         self.run_action(shallow=True)

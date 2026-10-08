@@ -27,6 +27,9 @@ inputs:
   max-comment-bytes:
     description: "Interdiffs are truncated to keep the comment under this size; GitHub's limit is 65536."
     default: "65000"
+  hide-after-days:
+    description: "On a force push, hide as outdated the earlier range-diff comments that are at least this many days old; empty keeps them all."
+    default: "3"
   post-comment:
     description: Set to `false` to render the comment to the log and job summary without posting it.
     default: "true"
@@ -51,4 +54,5 @@ runs:
         CREATION_FACTOR: ${{ inputs.creation-factor }}
         MAX_COMMENT_BYTES: ${{ inputs.max-comment-bytes }}
         POST_COMMENT: ${{ inputs.post-comment }}
+        HIDE_AFTER_DAYS: ${{ inputs.hide-after-days }}
       run: bash "$GITHUB_ACTION_PATH/post-range-diff-comment.sh"
