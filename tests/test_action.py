@@ -107,7 +107,9 @@ class ActionTest(unittest.TestCase):
         return result.stdout
 
     def test_force_push_full_checkout(self):
-        self.assertIn("; 1 commit; same base <a", self.run_action())
+        out = self.run_action()
+        self.assertIn("; 1 commit; same base <a", out)
+        self.assertIn("</a> +1 -1 1f < -:", out)
 
     def test_rebase_onto_newer_base(self):
         self.git("checkout", "-q", "main")

@@ -7,8 +7,10 @@ import argparse
 import html
 import re
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
+from pathlib import Path
 
 # Pair numbers are right-aligned to the width of the longer range, so a header
 # starts with at most a few spaces.  Interdiff lines are indented by exactly
@@ -33,6 +35,13 @@ class Pair:
     rsha: str
     subject: str
     body: tuple[str, ...] = ()
+
+
+@dataclass
+class Stat:
+    added: int = 0
+    removed: int = 0
+    files: int = 0
 
 
 def main(argv: list[str]) -> int:
@@ -73,6 +82,12 @@ def main(argv: list[str]) -> int:
         help="commits in the new base missing from the old one",
     )
     ap.add_argument(
+        "--stats",
+        type=Path,
+        required=True,
+        help="`git log --format=%%H --numstat` of both ranges",
+    )
+    ap.add_argument(
         "--max-bytes",
         type=int,
         default=65000,
@@ -96,6 +111,7 @@ def main(argv: list[str]) -> int:
             new_base=args.new_base,
             base_behind=args.base_behind,
             base_ahead=args.base_ahead,
+            stats=parse_stats(args.stats.read_text()),
             max_bytes=args.max_bytes,
             pushed_at=args.pushed_at,
         )
@@ -132,6 +148,21 @@ def parse(text: str) -> list[Pair]:
     ]
 
 
+def parse_stats(text: str) -> dict[str, Stat]:
+    stats: dict[str, Stat] = {}
+    for line in text.splitlines():
+        if "\t" not in line:
+            if line:
+                stat = stats[line] = Stat()
+            continue
+        # numstat prints "-" for the line counts of a binary file.
+        added, removed, _path = line.split("\t", 2)
+        stat.added += int(added.replace("-", "0"))
+        stat.removed += int(removed.replace("-", "0"))
+        stat.files += 1
+    return stats
+
+
 def render(
     pairs: list[Pair],
     *,
@@ -146,6 +177,7 @@ def render(
     new_base: str,
     base_behind: int,
     base_ahead: int,
+    stats: dict[str, Stat],
 ) -> str:
     counts = {op: sum(1 for p in pairs if p.op == op) for op in OP_LABEL}
     tally = (
@@ -173,7 +205,7 @@ def render(
         parts = (
             head
             + (["", note] if truncated else [])
-            + ["", render_listing(pairs, repo_url)]
+            + ["", render_listing(pairs, repo_url, stats)]
             + (
                 ["", render_interdiffs(pairs)]
                 if any(p.op == "!" for p in pairs)
@@ -198,14 +230,31 @@ def render(
     return out
 
 
-def render_listing(pairs: list[Pair], repo_url: str) -> str:
+def render_listing(pairs: list[Pair], repo_url: str, stats: dict[str, Stat]) -> str:
     width = number_width(pairs)
+    stat = stat_column(pairs, stats)
     lines = [
-        f"{p.lnum.rjust(width)}:  {sha_html(p.lsha, repo_url)} {p.op} "
-        f"{p.rnum.rjust(width)}:  {sha_html(p.rsha, repo_url)} {html.escape(p.subject)}"
+        f"{p.lnum.rjust(width)}:  {sha_html(p.lsha, repo_url)}{stat(p.lsha)} {p.op} "
+        f"{p.rnum.rjust(width)}:  {sha_html(p.rsha, repo_url)}{stat(p.rsha)} {html.escape(p.subject)}"
         for p in pairs
     ]
     return "<pre>\n" + "\n".join(lines) + "\n</pre>"
+
+
+def stat_column(pairs: list[Pair], stats: dict[str, Stat]) -> Callable[[str], str]:
+    cells = {
+        sha: (f"+{s.added}", f"-{s.removed}", f"{s.files}f")
+        for p in pairs
+        for sha in (p.lsha, p.rsha)
+        if (s := stats.get(sha))
+    }
+    widths = [max(map(len, column)) for column in zip(*cells.values())]
+
+    def column(sha: str) -> str:
+        cell = cells.get(sha, [""] * len(widths))
+        return "".join(f" {part:>{width}}" for part, width in zip(cell, widths))
+
+    return column
 
 
 def render_interdiffs(pairs: list[Pair]) -> str:
