@@ -1,6 +1,6 @@
 <!-- post-range-diff-comment before=deecb4b7a41ec39b40cdfc935ab28eb769c3aead after=031a72677e2ee12123ab2c8ef794bc3d0c521d8b -->
 <details>
-<summary><b>range-diff</b> for force push <a href="https://github.com/fungi-protocol/post-range-diff-comment/commit/deecb4b7a41ec39b40cdfc935ab28eb769c3aead">deecb4b7a4</a> → <a href="https://github.com/fungi-protocol/post-range-diff-comment/commit/031a72677e2ee12123ab2c8ef794bc3d0c521d8b">031a72677e</a> <relative-time datetime="2026-09-17T00:10:17Z">September 17, 2026 00:10 UTC</relative-time>: 1 modified, 1 unchanged, 1 dropped, 1 added</summary>
+<summary><b>range-diff</b> for force push <a href="https://github.com/fungi-protocol/post-range-diff-comment/commit/deecb4b7a41ec39b40cdfc935ab28eb769c3aead">deecb4b7a4</a> → <a href="https://github.com/fungi-protocol/post-range-diff-comment/commit/031a72677e2ee12123ab2c8ef794bc3d0c521d8b">031a72677e</a> <relative-time datetime="2026-09-17T00:10:17Z">September 17, 2026 00:10 UTC</relative-time>: 1 modified, 1 unchanged, 1 dropped, 1 added; 3 commits; base <a href="https://github.com/fungi-protocol/post-range-diff-comment/commit/1111111111111111111111111111111111111111">1111111111</a> → <a href="https://github.com/fungi-protocol/post-range-diff-comment/commit/2222222222222222222222222222222222222222">2222222222</a> (descendant, 12 commits ahead)</summary>
 
 <sup>reproduce: <code>git range-diff 9b127fb^..deecb4b 9b127fb^..031a726</code></sup>
 
