@@ -7,7 +7,7 @@ branding:
   color: purple
 inputs:
   token:
-    description: "Token with `pull-requests: write`."
+    description: "Token with `contents: read` and `pull-requests: write`."
     default: ${{ github.token }}
   before:
     description: Head commit before the push.

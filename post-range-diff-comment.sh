@@ -6,7 +6,7 @@
 #   BEFORE, AFTER      head commit before and after the push
 #   BASE_REF           the pull request's base branch
 #   PR_NUMBER          the pull request number
-#   GH_TOKEN           token with pull-requests: write
+#   GH_TOKEN           token with contents: read and pull-requests: write
 #   CREATION_FACTOR    optional, passed to --creation-factor
 #   MAX_COMMENT_BYTES  cap on the comment body
 #   POST_COMMENT       "false" to render without posting
@@ -42,17 +42,39 @@ if git merge-base --is-ancestor "$BEFORE" "$AFTER"; then
 fi
 echo "forced=true" >>"$OUT"
 
+# When the base branch was itself rewritten, as a parent in a stack, its old
+# tips are unreachable from it, and a series left on one would seem to fork
+# from further back.  GitHub's activity log stands in for the reflog that
+# `git merge-base --fork-point` reads.
+base_tips=("origin/$BASE_REF")
+if rewound="$(gh api --paginate --method GET --jq '.[].before' "repos/$REPO/activity" \
+  -f ref="refs/heads/$BASE_REF" -f activity_type=force_push -F per_page=100)"; then
+  for tip in $rewound; do
+    if git fetch --quiet --no-tags origin "$tip" 2>/dev/null; then
+      base_tips+=("$tip")
+    fi
+  done
+else
+  echo "::warning::could not list force pushes of $BASE_REF; if it was rewritten, its old commits will be counted in the series"
+fi
+
 # Diff each side against where it forked from the base branch, so a rebase
 # onto a newer base does not drag the base's new commits into the comparison.
-# Fall back to the symmetric difference if either side is unrelated to base.
-if old_base="$(git merge-base "origin/$BASE_REF" "$BEFORE")" &&
-  new_base="$(git merge-base "origin/$BASE_REF" "$AFTER")"; then
+# Fall back to the symmetric difference if either side is unrelated to base,
+# or if a tip of the base contains it: its range would be empty, which
+# range-diff rejects.
+if old_base="$(git merge-base "$BEFORE" "${base_tips[@]}")" &&
+  new_base="$(git merge-base "$AFTER" "${base_tips[@]}")" &&
+  [[ $old_base != "$(git rev-parse "$BEFORE^{commit}")" ]] &&
+  [[ $new_base != "$(git rev-parse "$AFTER^{commit}")" ]]; then
   old_range="$old_base..$BEFORE"
   new_range="$new_base..$AFTER"
+  read -r base_behind base_ahead < <(git rev-list --left-right --count "$old_base...$new_base")
 else
-  echo "::warning::no merge base with $BASE_REF; using $BEFORE...$AFTER"
+  echo "::warning::no fork point from $BASE_REF; using $BEFORE...$AFTER"
   old_range="$AFTER..$BEFORE"
   new_range="$BEFORE..$AFTER"
+  old_base="" new_base="" base_behind=0 base_ahead=0
 fi
 
 args=(--no-color)
@@ -70,6 +92,8 @@ render() {
   python3 "$HERE/render.py" \
     --repo-url "$SERVER/$REPO" --before "$BEFORE" --after "$AFTER" \
     --old-range "$pretty_old" --new-range "$pretty_new" \
+    --old-base "$old_base" --new-base "$new_base" \
+    --base-behind "$base_behind" --base-ahead "$base_ahead" \
     --pushed-at "$PUSHED_AT" --max-bytes "$1" <"$WORK/range-diff.txt"
 }
 render "${MAX_COMMENT_BYTES:-65000}" >"$WORK/comment.md"

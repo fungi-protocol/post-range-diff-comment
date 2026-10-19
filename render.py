@@ -53,6 +53,26 @@ def main(argv: list[str]) -> int:
         help="second range-diff argument, shown for reproduction",
     )
     ap.add_argument(
+        "--old-base",
+        required=True,
+        help="where the old series forked from the base, empty if unknown",
+    )
+    ap.add_argument(
+        "--new-base", required=True, help="where the new series forks from the base"
+    )
+    ap.add_argument(
+        "--base-behind",
+        type=int,
+        required=True,
+        help="commits in the old base missing from the new one",
+    )
+    ap.add_argument(
+        "--base-ahead",
+        type=int,
+        required=True,
+        help="commits in the new base missing from the old one",
+    )
+    ap.add_argument(
         "--max-bytes",
         type=int,
         default=65000,
@@ -72,6 +92,10 @@ def main(argv: list[str]) -> int:
             after=args.after,
             old_range=args.old_range,
             new_range=args.new_range,
+            old_base=args.old_base,
+            new_base=args.new_base,
+            base_behind=args.base_behind,
+            base_ahead=args.base_ahead,
             max_bytes=args.max_bytes,
             pushed_at=args.pushed_at,
         )
@@ -118,18 +142,27 @@ def render(
     new_range: str,
     max_bytes: int,
     pushed_at: str,
+    old_base: str,
+    new_base: str,
+    base_behind: int,
+    base_ahead: int,
 ) -> str:
     counts = {op: sum(1 for p in pairs if p.op == op) for op in OP_LABEL}
     tally = (
         ", ".join(f"{n} {OP_LABEL[op]}" for op, n in counts.items() if n)
         or "no commits"
     )
+    overview = [tally, describe_series(pairs)]
+    if old_base:
+        overview.append(
+            describe_base(old_base, new_base, base_behind, base_ahead, repo_url)
+        )
     head = [
         f"<!-- post-range-diff-comment before={before} after={after} -->",
         "<details>",
         (
             f"<summary><b>range-diff</b> for force push {sha_html(before, repo_url)} → "
-            f"{sha_html(after, repo_url)} {relative_time(pushed_at)}: {tally}</summary>"
+            f"{sha_html(after, repo_url)} {relative_time(pushed_at)}: {'; '.join(overview)}</summary>"
         ),
         "",
         f"<sup>reproduce: <code>git range-diff {html.escape(old_range)} {html.escape(new_range)}</code></sup>",
@@ -188,6 +221,28 @@ def render_interdiffs(pairs: list[Pair]) -> str:
             f"{fence}diff\n" + "\n".join(p.body) + f"\n{fence}\n\n</details>"
         )
     return "\n\n".join(blocks)
+
+
+def describe_series(pairs: list[Pair]) -> str:
+    old = sum(p.lnum != "-" for p in pairs)
+    new = sum(p.rnum != "-" for p in pairs)
+    return commits(new) if old == new else f"{old} → {commits(new)}"
+
+
+def describe_base(old: str, new: str, behind: int, ahead: int, repo_url: str) -> str:
+    if old == new:
+        return f"same base {sha_html(old, repo_url)}"
+    if not behind:
+        relation = f"descendant, {commits(ahead)} ahead"
+    elif not ahead:
+        relation = f"ancestor, {commits(behind)} behind"
+    else:
+        relation = f"diverged, {ahead} ahead and {behind} behind"
+    return f"base {sha_html(old, repo_url)} → {sha_html(new, repo_url)} ({relation})"
+
+
+def commits(n: int) -> str:
+    return f"{n} commit" if n == 1 else f"{n} commits"
 
 
 def number_width(pairs: list[Pair]) -> int:

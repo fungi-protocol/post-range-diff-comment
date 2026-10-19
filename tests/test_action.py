@@ -35,13 +35,27 @@ class ActionTest(unittest.TestCase):
             ["git", *args], cwd=cwd or self.origin, env=self.env, text=True
         ).strip()
 
-    def commit(self, content, message, amend=False):
-        (self.origin / "file").write_text(content)
-        self.git("add", "file")
+    def commit(self, content, message, amend=False, path="file"):
+        (self.origin / path).write_text(content)
+        self.git("add", path)
         self.git("commit", "-q", "-m", message, *(["--amend"] if amend else []))
         return self.git("rev-parse", "HEAD")
 
-    def run_action(self, *, shallow=False, packaged=False, forced=True):
+    def run_action(
+        self,
+        *,
+        shallow=False,
+        packaged=False,
+        forced=True,
+        base_ref="main",
+        rewound=(),
+    ):
+        # Stands in for the activity log: prints the old tips of the base branch.
+        stub = self.root / "stub"
+        stub.mkdir()
+        gh = stub / "gh"
+        gh.write_text("#!/bin/sh\n" + "".join(f"echo {tip}\n" for tip in rewound))
+        gh.chmod(0o755)
         checkout = self.root / "checkout"
         self.git(
             "clone",
@@ -57,13 +71,14 @@ class ActionTest(unittest.TestCase):
             self.env,
             BEFORE=self.before,
             AFTER=self.after,
-            BASE_REF="main",
+            BASE_REF=base_ref,
             PR_NUMBER="1",
             GITHUB_REPOSITORY="test/repo",
             GITHUB_SERVER_URL="https://github.com",
             GITHUB_OUTPUT=str(output),
             GITHUB_STEP_SUMMARY=str(summary),
             POST_COMMENT="false",
+            PATH=f"{stub}{os.pathsep}{os.environ['PATH']}",
         )
         command = (
             [PACKAGE]
@@ -86,12 +101,52 @@ class ActionTest(unittest.TestCase):
             self.assertIn("<b>range-diff</b>", result.stdout)
             self.assertIn(self.before, result.stdout)
             self.assertIn(self.after, result.stdout)
-            self.assertEqual(summary.read_text(), result.stdout)
+            self.assertTrue(result.stdout.endswith(summary.read_text()))
         else:
             self.assertFalse(summary.exists())
+        return result.stdout
 
     def test_force_push_full_checkout(self):
-        self.run_action()
+        self.assertIn("; 1 commit; same base <a", self.run_action())
+
+    def test_rebase_onto_newer_base(self):
+        self.git("checkout", "-q", "main")
+        self.commit("other\n", "advance base", path="other")
+        self.git("checkout", "-q", "topic")
+        self.git("rebase", "-q", "main")
+        self.after = self.git("rev-parse", "HEAD")
+        self.assertIn("(descendant, 1 commit ahead)", self.run_action())
+
+    def test_rewritten_parent_in_a_stack(self):
+        self.git("checkout", "-q", "-b", "child")
+        self.before = self.commit("child\n", "child", path="child")
+        self.git("checkout", "-q", "topic")
+        old_parent = self.after
+        new_parent = self.commit("newer\n", "change", amend=True)
+        self.git("checkout", "-q", "child")
+        self.git("rebase", "-q", "--onto", "topic", "child~1")
+        self.after = self.git("rev-parse", "HEAD")
+        collected = "0123456789" * 4
+        out = self.run_action(base_ref="topic", rewound=[collected, old_parent])
+        self.assertIn(f"git range-diff {old_parent[:7]}", out)
+        self.assertIn("1 unchanged; 1 commit; base <a", out)
+        self.assertIn(f'{new_parent}">', out)
+        self.assertIn("(diverged, 1 ahead and 1 behind)", out)
+
+    def test_unrelated_base_is_not_described(self):
+        self.git("checkout", "-q", "main")
+        self.commit("rewritten\n", "base", amend=True, path="other")
+        self.git("checkout", "-q", "topic")
+        self.git("rebase", "-q", "--onto", "main", "topic~1")
+        self.after = self.git("rev-parse", "HEAD")
+        self.assertNotIn("base <a", self.run_action())
+
+    def test_series_an_old_base_tip_contained(self):
+        self.git("checkout", "-q", "-b", "child")
+        self.before = self.commit("child\n", "child", path="child")
+        self.git("branch", "merged", self.before)
+        self.after = self.commit("child again\n", "child", amend=True, path="child")
+        self.run_action(base_ref="topic", rewound=[self.before])
 
     def test_force_push_shallow_checkout(self):
         self.run_action(shallow=True)
