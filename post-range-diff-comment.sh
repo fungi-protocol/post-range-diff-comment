@@ -82,6 +82,9 @@ if [[ -n ${CREATION_FACTOR:-} ]]; then
   args+=("--creation-factor=$CREATION_FACTOR")
 fi
 git -c core.abbrev=40 range-diff "${args[@]}" "$old_range" "$new_range" >"$WORK/range-diff.txt"
+for range in "$old_range" "$new_range"; do
+  git log --format=%H --numstat "$range"
+done >"$WORK/stats.txt"
 
 PUSHED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 short() { git rev-parse --short "$1"; }
@@ -94,6 +97,7 @@ render() {
     --old-range "$pretty_old" --new-range "$pretty_new" \
     --old-base "$old_base" --new-base "$new_base" \
     --base-behind "$base_behind" --base-ahead "$base_ahead" \
+    --stats "$WORK/stats.txt" \
     --pushed-at "$PUSHED_AT" --max-bytes "$1" <"$WORK/range-diff.txt"
 }
 render "${MAX_COMMENT_BYTES:-65000}" >"$WORK/comment.md"
