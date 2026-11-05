@@ -10,6 +10,7 @@
 #   CREATION_FACTOR    optional, passed to --creation-factor
 #   MAX_COMMENT_BYTES  cap on the comment body
 #   POST_COMMENT       "false" to render without posting
+#   HIDE_AFTER_DAYS    hide earlier range-diff comments at least this old
 set -euo pipefail
 
 : "${BEFORE:?}" "${AFTER:?}" "${BASE_REF:?}" "${PR_NUMBER:?}"
@@ -110,11 +111,45 @@ if [[ ${POST_COMMENT:-true} == false ]]; then
 fi
 
 : "${GH_TOKEN:?}"
-if ! url="$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" \
-  -F body=@"$WORK/comment.md" --jq .html_url)"; then
+hide_outdated() {
+  local ids id
+  # shellcheck disable=SC2016
+  ids="$(gh api graphql --paginate \
+    -f owner="${REPO%/*}" -f name="${REPO#*/}" -F number="$PR_NUMBER" -f query='
+      query($owner: String!, $name: String!, $number: Int!, $endCursor: String) {
+        repository(owner: $owner, name: $name) {
+          pullRequest(number: $number) {
+            comments(first: 100, after: $endCursor) {
+              pageInfo { hasNextPage endCursor }
+              nodes { id body createdAt isMinimized viewerDidAuthor }
+            }
+          }
+        }
+      }' --jq '.data.repository.pullRequest.comments.nodes[]' |
+    python3 "$HERE/outdated.py" "$HIDE_AFTER_DAYS")" || return
+  for id in $ids; do
+    [[ $id == "$1" ]] && continue
+    # shellcheck disable=SC2016
+    gh api graphql -f id="$id" -f query='
+      mutation($id: ID!) {
+        minimizeComment(input: {subjectId: $id, classifier: OUTDATED}) {
+          clientMutationId
+        }
+      }' >/dev/null || return
+  done
+}
+
+if ! posted="$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" \
+  -F body=@"$WORK/comment.md" --jq '"\(.node_id) \(.html_url)"')"; then
   echo "::error::could not post the comment; the token needs pull-requests: write" \
     "(pull_request events from forks only get a read-only token)"
   exit 1
 fi
+read -r node_id url <<<"$posted"
 echo "comment-url=$url" >>"$OUT"
 echo "posted $url"
+
+# After posting, so a failed post never leaves the old ones hidden.
+if [[ -n ${HIDE_AFTER_DAYS:-} ]] && ! hide_outdated "$node_id"; then
+  echo "::warning::could not hide the outdated range-diff comments"
+fi

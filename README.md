@@ -27,7 +27,9 @@ changes. The summary line says how many commits the series had before and
 after, and whether its base is the same, a descendant or an ancestor of the
 old one, or diverged from it. A base branch that was itself rewritten, as a
 parent in a stack, is recognized from its force pushes in the repository's
-activity log. Inputs and outputs are described in [action.yml](action.yml).
+activity log. Range-diff comments at least three days old are hidden as
+outdated on the next force push; `hide-after-days` changes or disables that.
+Inputs and outputs are described in [action.yml](action.yml).
 
 `pull_request_target` gives fork PRs a token that can comment. It is safe here
 because nothing from the PR runs: the checkout is the base branch, the action
