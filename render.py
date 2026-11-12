@@ -9,7 +9,7 @@ import re
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass, replace
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 # Pair numbers are right-aligned to the width of the longer range, so a header
@@ -299,7 +299,7 @@ def number_width(pairs: list[Pair]) -> int:
 
 
 def relative_time(iso: str) -> str:
-    when = datetime.fromisoformat(iso.replace("Z", "+00:00")).astimezone(timezone.utc)
+    when = datetime.fromisoformat(iso).astimezone(UTC)
     return f'<relative-time datetime="{when:%Y-%m-%dT%H:%M:%SZ}">{when:%B %-d, %Y %H:%M} UTC</relative-time>'
 
 

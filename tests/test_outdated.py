@@ -1,12 +1,12 @@
 import pathlib
 import sys
 import unittest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import outdated
 
-NOW = datetime(2026, 10, 8, 12, tzinfo=timezone.utc)
+NOW = datetime(2026, 10, 8, 12, tzinfo=UTC)
 
 
 def comment(node_id, created, **changed):
