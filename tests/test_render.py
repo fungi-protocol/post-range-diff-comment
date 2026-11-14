@@ -1,3 +1,5 @@
+import argparse
+import itertools
 import pathlib
 import sys
 import unittest
@@ -115,6 +117,77 @@ class RenderTest(unittest.TestCase):
         out = render.render_interdiffs(pairs)
         self.assertIn("\n````diff\n", out)
         self.assertIn("\n````\n", out)
+
+    def test_long_lines_wrap_with_their_markers(self):
+        self.assertEqual(render.wrap("++abcdefgh", 6), ["++abcd", "++efgh"])
+        self.assertEqual(render.wrap(" -abcd", 6), [" -abcd"])
+        self.assertEqual(render.wrap("++ab cdef", 6), ["++ab ", "++cdef"])
+        self.assertEqual(render.wrap("++ab cdefgh", 6), ["++ab ", "++cdef", "++gh"])
+        self.assertEqual(render.wrap("++  abcdef", 8), ["++  abcd", "++  ef"])
+        self.assertEqual(render.wrap("-  ab cd", 6), ["-  ab ", "-  cd"])
+        self.assertEqual(render.wrap("@@ ab cd", 6), ["@@ ab ", "cd"])
+        self.assertEqual(render.wrap("+    abcdef", 4), ["+ ab", "+ cd", "+ ef"])
+        self.assertEqual(
+            render.wrap("++a" + " " * 10 + "abc", 6),
+            ["++a   ", "++    ", "++   ", "++abc"],
+        )
+        self.assertEqual(render.wrap("++abcdefgh", None), ["++abcdefgh"])
+
+    def test_wrap_width_leaves_room_for_markers(self):
+        self.assertEqual(render.wrap_width("4"), 4)
+        for arg in ("3", "0", "-1"):
+            with self.assertRaises(argparse.ArgumentTypeError):
+                render.wrap_width(arg)
+
+    def test_wrapping_keeps_the_text(self):
+        # Every line up to 7 characters over a small alphabet, at every width:
+        # the pieces fit, start with the markers and indentation, and rejoin
+        # to the line, less the indentation past half the width.
+        # Every piece but the last ends at a space or is cut at the width, and
+        # a cut at the width splits only a word longer than a piece holds.
+        for n in range(8):
+            for chars in itertools.product(" +-@a", repeat=n):
+                line = "".join(chars)
+                for width in range(render.MIN_WRAP_WIDTH, 9):
+                    pieces = render.wrap(line, width)
+                    markers = render.hang(line, width)
+                    self.assertTrue(all(len(p) <= width for p in pieces))
+                    self.assertTrue(all(p.startswith(markers) for p in pieces))
+                    if pieces == [line]:
+                        continue
+                    rest = line[render.HANG.match(line).end() :]
+                    self.assertEqual("".join(p[len(markers) :] for p in pieces), rest)
+                    for p in pieces[:-1]:
+                        self.assertTrue(p.endswith(" ") or len(p) == width)
+                    texts = [p[len(markers) :] for p in pieces]
+                    for a, b in itertools.pairwise(texts):
+                        if not a.endswith(" ") and not b.startswith(" "):
+                            word = a.rsplit(" ", 1)[-1] + b.split(" ", 1)[0]
+                            self.assertGreater(len(word), width - len(markers))
+
+    def test_wrapped_lines_are_truncated_by_line(self):
+        # The line fits unwrapped, but its wrapped pieces do not.  Halving
+        # them keeps the fence closed, which a byte cut would not.
+        text = "1:  aaaaaaa ! 1:  bbbbbbb s\n    ++" + "x" * 63500 + "\n"
+        out = render.render(
+            render.parse(text),
+            repo_url=REPO,
+            before=BEFORE,
+            after=AFTER,
+            old_range="a..b",
+            new_range="a..c",
+            max_bytes=65000,
+            pushed_at="2026-09-17T00:10:17Z",
+            old_base="",
+            new_base="",
+            base_behind=0,
+            base_ahead=0,
+            stats={},
+            wrap_width=80,
+        )
+        self.assertLessEqual(len(out.encode()), 65000)
+        self.assertIn("Some interdiffs were truncated", out)
+        self.assertEqual(out.count("```"), 2)
 
     def test_truncation_fits_and_is_noted(self):
         full = render_basic()

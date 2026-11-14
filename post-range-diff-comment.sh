@@ -11,6 +11,7 @@
 #   MAX_COMMENT_BYTES  cap on the comment body
 #   POST_COMMENT       "false" to render without posting
 #   HIDE_AFTER_DAYS    hide earlier range-diff comments at least this old
+#   WRAP_WIDTH         optional, hard wrap interdiff lines longer than this
 set -euo pipefail
 
 : "${BEFORE:?}" "${AFTER:?}" "${BASE_REF:?}" "${PR_NUMBER:?}"
@@ -99,11 +100,13 @@ render() {
     --old-base "$old_base" --new-base "$new_base" \
     --base-behind "$base_behind" --base-ahead "$base_ahead" \
     --stats "$WORK/stats.txt" \
-    --pushed-at "$PUSHED_AT" --max-bytes "$1" <"$WORK/range-diff.txt"
+    --pushed-at "$PUSHED_AT" --max-bytes "$1" \
+    ${WRAP_WIDTH:+--wrap-width "$WRAP_WIDTH"} <"$WORK/range-diff.txt"
 }
 render "${MAX_COMMENT_BYTES:-65000}" >"$WORK/comment.md"
-# Job summaries allow 1 MiB, so the summary usually holds the untruncated text.
-render 1000000 >>"$SUMMARY"
+# Job summaries allow 1 MiB, so the summary usually holds the full text.
+# Wrapping is left out there because it lengthens the text it would hold.
+WRAP_WIDTH='' render 1000000 >>"$SUMMARY"
 
 if [[ ${POST_COMMENT:-true} == false ]]; then
   cat "$WORK/comment.md"

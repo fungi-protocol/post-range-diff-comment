@@ -22,6 +22,11 @@ HEADER = re.compile(
     r"(?: (?P<subject>.*))?$"
 )
 BODY_INDENT = "    "
+# A body line starts with up to two diff markers (none on a range-diff hunk
+# header, one on a commit message line) and then its indentation.
+HANG = re.compile(r"[ +-]{0,2}[ \t]*")
+# Half of this width holds both diff markers, and the other half holds text.
+MIN_WRAP_WIDTH = 4
 SHORT_SHA = 10
 OP_LABEL = {"!": "modified", "=": "unchanged", "<": "dropped", ">": "added"}
 
@@ -94,6 +99,11 @@ def main(argv: list[str]) -> int:
         help="GitHub caps comment bodies at 65536 bytes",
     )
     ap.add_argument(
+        "--wrap-width",
+        type=wrap_width,
+        help=f"hard wrap interdiff lines longer than this, at least {MIN_WRAP_WIDTH}; omit to never wrap",
+    )
+    ap.add_argument(
         "--pushed-at", required=True, help="when the push happened, ISO 8601 UTC"
     )
     args = ap.parse_args(argv)
@@ -114,6 +124,7 @@ def main(argv: list[str]) -> int:
             stats=parse_stats(args.stats.read_text()),
             max_bytes=args.max_bytes,
             pushed_at=args.pushed_at,
+            wrap_width=args.wrap_width,
         )
     )
     return 0
@@ -178,6 +189,7 @@ def render(
     base_behind: int,
     base_ahead: int,
     stats: dict[str, Stat],
+    wrap_width: int | None = None,
 ) -> str:
     counts = {op: sum(1 for p in pairs if p.op == op) for op in OP_LABEL}
     tally = (
@@ -198,6 +210,12 @@ def render(
         ),
         "",
         f"<sup>reproduce: <code>git range-diff {html.escape(old_range)} {html.escape(new_range)}</code></sup>",
+    ]
+    pairs = [
+        replace(
+            p, body=tuple(part for line in p.body for part in wrap(line, wrap_width))
+        )
+        for p in pairs
     ]
     note = "<i>Some interdiffs were truncated to fit; the full range-diff is in the job summary.</i>"
 
@@ -270,6 +288,40 @@ def render_interdiffs(pairs: list[Pair]) -> str:
             f"{fence}diff\n" + "\n".join(p.body) + f"\n{fence}\n\n</details>"
         )
     return "\n\n".join(blocks)
+
+
+def wrap(line: str, width: int | None) -> list[str]:
+    """Split a body line, for reading, into pieces at most `width` long.
+
+    Each piece starts with the line's diff markers and indentation, cut to half
+    of `width` so they cannot fill a piece with spaces.  A piece ends after the
+    last space that fits, and a word longer than the rest of the piece is cut at
+    the width.  `width` is None to keep the line whole, or at least
+    `MIN_WRAP_WIDTH`.
+    """
+    if width is None or len(line) <= width:
+        return [line]
+    markers = hang(line, width)
+    text = line[HANG.match(line).end() :]
+    room = width - len(markers)
+    pieces = []
+    while len(text) > room:
+        space = text.rfind(" ", 0, room)
+        cut = space + 1 if space >= 0 else room
+        pieces.append(markers + text[:cut])
+        text = text[cut:]
+    return pieces + [markers + text]
+
+
+def wrap_width(arg: str) -> int:
+    width = int(arg)
+    if width < MIN_WRAP_WIDTH:
+        raise argparse.ArgumentTypeError(f"must be at least {MIN_WRAP_WIDTH}")
+    return width
+
+
+def hang(line: str, width: int) -> str:
+    return HANG.match(line)[0][: width // 2]
 
 
 def describe_series(pairs: list[Pair]) -> str:
