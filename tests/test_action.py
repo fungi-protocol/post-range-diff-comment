@@ -55,6 +55,7 @@ class ActionTest(unittest.TestCase):
         rewound=(),
         comments=None,
         post_fails=False,
+        wrap_width="",
     ):
         # Stands in for GitHub: the old tips of the base branch, the comments
         # of the pull request, and a record of the ones it was asked to hide.
@@ -99,6 +100,7 @@ esac
             POST_COMMENT=str(posting).lower(),
             GH_TOKEN="token",
             HIDE_AFTER_DAYS="3",
+            WRAP_WIDTH=wrap_width,
             PATH=f"{stub}{os.pathsep}{os.environ['PATH']}",
         )
         command = (
@@ -125,7 +127,8 @@ esac
             self.assertIn("<b>range-diff</b>", result.stdout)
             self.assertIn(self.before, result.stdout)
             self.assertIn(self.after, result.stdout)
-            self.assertTrue(result.stdout.endswith(summary.read_text()))
+            if not wrap_width:
+                self.assertTrue(result.stdout.endswith(summary.read_text()))
         return result.stdout
 
     def test_force_push_full_checkout(self):
@@ -188,6 +191,13 @@ esac
         old = comment("OLD", "2000-01-01T00:00:00Z")
         self.run_action(comments=[old], post_fails=True)
         self.assertFalse((self.root / "stub" / "hidden").exists())
+
+    def test_wrap_width_reaches_the_comment(self):
+        self.after = self.commit("old\n" + "x" * 40 + "\n", "change", amend=True)
+        out = self.run_action(wrap_width="20")
+        self.assertIn("\n++" + "x" * 18 + "\n++" + "x" * 18 + "\n++xxxx\n", out)
+        summary = (self.root / "summary").read_text()
+        self.assertIn("\n++" + "x" * 40 + "\n", summary)
 
     def test_force_push_shallow_checkout(self):
         self.run_action(shallow=True)
