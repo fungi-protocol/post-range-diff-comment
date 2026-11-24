@@ -9,7 +9,7 @@ two trees; this shows how the commits changed.
 ```yaml
 on:
   pull_request_target:
-    types: [synchronize]
+    types: [synchronize, ready_for_review, converted_to_draft]
 permissions:
   contents: read
   pull-requests: write
@@ -20,6 +20,13 @@ jobs:
       - uses: actions/checkout@v7
       - uses: fungi-protocol/post-range-diff-comment@main
 ```
+
+Draft pull requests are skipped, so a long draft does not collect a comment per
+force push. Converting a pull request to draft posts a minimized marker at its
+head, so marking it ready for review posts the range-diff from that head to the
+current head, even when no range-diff comment exists or fast-forward pushes
+moved the head on. With no earlier marker or range-diff comment there is
+nothing to compare against, so nothing is posted.
 
 Fast-forward pushes are skipped. Each side is diffed against its own merge
 base with the base branch, so a rebase onto a newer base is not mistaken for

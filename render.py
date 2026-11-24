@@ -106,6 +106,11 @@ def main(argv: list[str]) -> int:
     ap.add_argument(
         "--pushed-at", required=True, help="when the push happened, ISO 8601 UTC"
     )
+    ap.add_argument(
+        "--fast-forward",
+        action="store_true",
+        help="the old head is an ancestor of the new one, a catch-up rather than a force push",
+    )
     args = ap.parse_args(argv)
 
     pairs = parse(sys.stdin.read())
@@ -125,6 +130,7 @@ def main(argv: list[str]) -> int:
             max_bytes=args.max_bytes,
             pushed_at=args.pushed_at,
             wrap_width=args.wrap_width,
+            fast_forward=args.fast_forward,
         )
     )
     return 0
@@ -190,6 +196,7 @@ def render(
     base_ahead: int,
     stats: dict[str, Stat],
     wrap_width: int | None = None,
+    fast_forward: bool = False,
 ) -> str:
     counts = {op: sum(1 for p in pairs if p.op == op) for op in OP_LABEL}
     tally = (
@@ -201,11 +208,12 @@ def render(
         overview.append(
             describe_base(old_base, new_base, base_behind, base_ahead, repo_url)
         )
+    kind = "fast-forward catch-up" if fast_forward else "force push"
     head = [
         f"<!-- post-range-diff-comment before={before} after={after} -->",
         "<details>",
         (
-            f"<summary><b>range-diff</b> for force push {sha_html(before, repo_url)} → "
+            f"<summary><b>range-diff</b> for {kind} {sha_html(before, repo_url)} → "
             f"{sha_html(after, repo_url)} {relative_time(pushed_at)}: {'; '.join(overview)}</summary>"
         ),
         "",

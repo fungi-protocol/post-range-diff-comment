@@ -56,6 +56,9 @@ class ActionTest(unittest.TestCase):
         comments=None,
         post_fails=False,
         wrap_width="",
+        draft=False,
+        event_action="synchronize",
+        before=None,
     ):
         # Stands in for GitHub: the old tips of the base branch, the comments
         # of the pull request, and a record of the ones it was asked to hide.
@@ -71,7 +74,14 @@ case "$*" in
 *minimizeComment*) echo "$*" >>"{stub}/hidden" ;;
 *graphql*) cat "{stub}/comments" ;;
 */activity*) printf '%s\\n' {" ".join(rewound)} ;;
-*) {post} ;;
+*)
+  for arg in "$@"; do
+    case "$arg" in
+    body=@*) cp "${{arg#body=@}}" "{stub}/posted" ;;
+    esac
+  done
+  {post}
+  ;;
 esac
 """)
         gh.chmod(0o755)
@@ -89,8 +99,10 @@ esac
         summary = self.root / "summary"
         env = dict(
             self.env,
-            BEFORE=self.before,
+            BEFORE=self.before if before is None else before,
             AFTER=self.after,
+            DRAFT=str(draft).lower(),
+            EVENT_ACTION=event_action,
             BASE_REF=base_ref,
             PR_NUMBER="1",
             GITHUB_REPOSITORY="test/repo",
@@ -119,7 +131,13 @@ esac
         )
         self.assertEqual(result.returncode, int(post_fails), result.stderr)
         self.assertTrue(output.exists(), result.stderr)
-        posted = f"comment-url={COMMENT_URL}\n" if posting and not post_fails else ""
+        posted = (
+            f"comment-url={COMMENT_URL}\n"
+            if posting
+            and not post_fails
+            and (forced or event_action == "converted_to_draft")
+            else ""
+        )
         self.assertEqual(output.read_text(), f"forced={str(forced).lower()}\n{posted}")
         if not forced:
             self.assertFalse(summary.exists())
@@ -135,6 +153,141 @@ esac
         out = self.run_action()
         self.assertIn("; 1 commit; same base <a", out)
         self.assertIn("</a> +1 -1 1f < -:", out)
+
+    def test_draft_push_posts_nothing(self):
+        out = self.run_action(draft=True, forced=False, comments=[])
+        self.assertNotIn("NEW", out)
+        self.assertNotIn("<b>range-diff</b>", out)
+        self.assertFalse((self.root / "stub" / "posted").exists())
+
+    def test_converted_to_draft_posts_marker(self):
+        out = self.run_action(
+            draft=True, event_action="converted_to_draft", comments=[], forced=False
+        )
+        posted = (self.root / "stub" / "posted").read_text()
+        self.assertTrue(posted.startswith("<!-- post-range-diff-comment "))
+        self.assertIn(f"after={self.after}", posted)
+        self.assertNotIn("<b>range-diff</b>", out)
+        self.assertNotIn("<details>", posted)
+
+    def test_converted_to_draft_posts_minimized_marker(self):
+        self.run_action(
+            draft=True, event_action="converted_to_draft", comments=[], forced=False
+        )
+        hidden = (self.root / "stub" / "hidden").read_text()
+        self.assertIn("id=NEW", hidden)
+        self.assertIn("minimizeComment", hidden)
+
+    def test_converted_to_draft_without_before(self):
+        self.run_action(
+            draft=True,
+            event_action="converted_to_draft",
+            comments=[],
+            forced=False,
+            before="",
+        )
+        posted = (self.root / "stub" / "posted").read_text()
+        self.assertIn(f"after={self.after}", posted)
+
+    def test_ready_for_review_after_converted_to_draft(self):
+        old_head = self.before
+        marker = comment("MARKER", "2026-01-01T00:00:00Z", isMinimized=True)
+        marker["body"] = f"<!-- post-range-diff-comment after={old_head} -->"
+        # The draft period moved the head on; the marker is the only record.
+        self.before = self.commit("draft\n", "change", amend=True)
+        self.after = self.commit("ready\n", "change", amend=True)
+        out = self.run_action(comments=[marker], event_action="ready_for_review")
+        posted = (self.root / "stub" / "posted").read_text()
+        self.assertIn(f"before={old_head} after={self.after}", posted)
+        self.assertIn(COMMENT_URL, out)
+
+    def test_ready_for_review_posts_from_last_comment(self):
+        old_head = self.before
+        last = comment("LAST", "2026-01-01T00:00:00Z")
+        last["body"] = (
+            "<!-- post-range-diff-comment "
+            f"before={'0' * 40} after={old_head} -->\n<details>"
+        )
+        # The draft period moved the head on; its before must not be used.
+        self.before = self.commit("draft\n", "change", amend=True)
+        self.after = self.commit("ready\n", "change", amend=True)
+        # Newer comments that are not this action's range-diff are ignored.
+        chatter = comment("CHATTER", "2026-02-01T00:00:00Z", body="looks good")
+        someone_else = comment("OTHER", "2026-03-01T00:00:00Z", viewerDidAuthor=False)
+        someone_else["body"] = (
+            "<!-- post-range-diff-comment "
+            f"before={'1' * 40} after={'2' * 40} -->\n<details>"
+        )
+        out = self.run_action(
+            comments=[last, chatter, someone_else], event_action="ready_for_review"
+        )
+        posted = (self.root / "stub" / "posted").read_text()
+        self.assertIn(f"before={old_head} after={self.after}", posted)
+        self.assertNotIn(f"before={self.before}", posted)
+        self.assertIn("for force push", posted)
+        self.assertNotIn("fast-forward catch-up", posted)
+        self.assertIn(COMMENT_URL, out)
+
+    def test_ready_for_review_after_fast_forward_draft(self):
+        old_head = self.after
+        last = comment("LAST", "2026-01-01T00:00:00Z")
+        last["body"] = (
+            "<!-- post-range-diff-comment "
+            f"before={'0' * 40} after={old_head} -->\n<details>"
+        )
+        # The draft period only added commits, so the head is a descendant.
+        self.before = self.commit("draft\n", "draft")
+        self.after = self.commit("ready\n", "ready")
+        self.git("merge-base", "--is-ancestor", old_head, self.after)
+        out = self.run_action(comments=[last], event_action="ready_for_review")
+        posted = (self.root / "stub" / "posted").read_text()
+        self.assertIn(f"before={old_head} after={self.after}", posted)
+        self.assertIn("for fast-forward catch-up", posted)
+        self.assertNotIn("for force push", posted)
+        self.assertIn(COMMENT_URL, out)
+
+    def test_ready_for_review_uses_most_recent_range_diff(self):
+        older = comment("OLDER", "2026-01-01T00:00:00Z")
+        older["body"] = (
+            "<!-- post-range-diff-comment "
+            f"before={'0' * 40} after={self.before} -->\n<details>"
+        )
+        mid = self.commit("mid\n", "change", amend=True)
+        newer = comment("NEWER", "2026-02-01T00:00:00Z")
+        newer["body"] = (
+            "<!-- post-range-diff-comment "
+            f"before={self.before} after={mid} -->\n<details>"
+        )
+        self.after = self.commit("ready\n", "change", amend=True)
+        out = self.run_action(comments=[older, newer], event_action="ready_for_review")
+        posted = (self.root / "stub" / "posted").read_text()
+        self.assertIn(f"before={mid} after={self.after}", posted)
+        self.assertNotIn(f"before={self.before}", posted)
+        self.assertIn(COMMENT_URL, out)
+
+    def test_ready_for_review_without_new_commits_posts_nothing(self):
+        last = comment("LAST", "2026-01-01T00:00:00Z")
+        last["body"] = (
+            "<!-- post-range-diff-comment "
+            f"before={'0' * 40} after={self.after} -->\n<details>"
+        )
+        out = self.run_action(
+            comments=[last], event_action="ready_for_review", forced=False
+        )
+        self.assertNotIn("NEW", out)
+        self.assertFalse((self.root / "stub" / "posted").exists())
+
+    def test_ready_for_review_does_not_hide_old_comments(self):
+        old = comment("OLD", "2000-01-01T00:00:00Z")
+        last = comment("LAST", "2026-01-01T00:00:00Z")
+        last["body"] = (
+            "<!-- post-range-diff-comment "
+            f"before={'0' * 40} after={self.before} -->\n<details>"
+        )
+        self.after = self.commit("ready\n", "change", amend=True)
+        out = self.run_action(comments=[old, last], event_action="ready_for_review")
+        self.assertIn(COMMENT_URL, out)
+        self.assertFalse((self.root / "stub" / "hidden").exists())
 
     def test_rebase_onto_newer_base(self):
         self.git("checkout", "-q", "main")
