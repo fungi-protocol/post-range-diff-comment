@@ -7,6 +7,7 @@
         cp ${../post-range-diff-comment.sh} "$out/post-range-diff-comment.sh"
         cp ${../render.py} "$out/render.py"
         cp ${../outdated.py} "$out/outdated.py"
+        cp ${../last_comment.py} "$out/last_comment.py"
       '';
     in
     {

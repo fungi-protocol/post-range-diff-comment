@@ -1,6 +1,6 @@
 name: post-range-diff-comment
 description: >-
-  On a force push to a pull request, post `git range-diff` of the old and new series as a collapsed comment, one collapsible section per rewritten commit.
+  On a force push to a pull request, post `git range-diff` of the old and new series as a collapsed comment, one collapsible section per rewritten commit. Draft pull requests are skipped until they are marked ready for review; converting one to draft posts a minimized marker at its head.
 author: Fungi contributors
 branding:
   icon: git-commit
@@ -10,11 +10,17 @@ inputs:
     description: "Token with `contents: read` and `pull-requests: write`."
     default: ${{ github.token }}
   before:
-    description: Head commit before the push.
+    description: "Head commit before the push; on `ready_for_review` the head of the last range-diff comment or draft marker is used instead."
     default: ${{ github.event.before }}
   after:
     description: Head commit after the push.
-    default: ${{ github.event.after }}
+    default: ${{ github.event.after || github.event.pull_request.head.sha }}
+  draft:
+    description: "Whether the pull request is a draft; a force push to a draft posts nothing, but `converted_to_draft` posts a minimized marker."
+    default: ${{ github.event.pull_request.draft }}
+  event-action:
+    description: "The pull request event action; `ready_for_review` posts from the last range-diff comment or draft marker, and `converted_to_draft` posts a minimized marker at the head."
+    default: ${{ github.event.action }}
   base-ref:
     description: The pull request's base branch.
     default: ${{ github.event.pull_request.base.ref }}
@@ -38,7 +44,7 @@ inputs:
     default: "true"
 outputs:
   forced:
-    description: "`true` if the push was not a fast-forward, `false` if nothing was posted."
+    description: "`true` if there is a range-diff to post, `false` if no range-diff was posted; a `converted_to_draft` marker is still posted with `forced` false."
     value: ${{ steps.run.outputs.forced }}
   comment-url:
     description: URL of the posted comment, when one was posted.
@@ -52,6 +58,8 @@ runs:
         GH_TOKEN: ${{ inputs.token }}
         BEFORE: ${{ inputs.before }}
         AFTER: ${{ inputs.after }}
+        DRAFT: ${{ inputs.draft }}
+        EVENT_ACTION: ${{ inputs.event-action }}
         BASE_REF: ${{ inputs.base-ref }}
         PR_NUMBER: ${{ inputs.pr-number }}
         CREATION_FACTOR: ${{ inputs.creation-factor }}
